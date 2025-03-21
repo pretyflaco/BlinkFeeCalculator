@@ -13,6 +13,11 @@ export default function Home() {
 
       {/* Fee Calculator */}
       <FeeCalculator />
+
+      {/* Documentation */}
+      <section className="mt-12">
+        <Documentation />
+      </section>
     </main>
   );
 }
