@@ -15,14 +15,14 @@ export default function Navbar() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex space-x-6">
-          <Link href="/">
-            <a className="text-gray-600 hover:text-orange-500 transition-colors">Home</a>
+          <Link href="/" className="text-gray-600 hover:text-orange-500 transition-colors">
+            Home
           </Link>
-          <Link href="/about">
-            <a className="text-gray-600 hover:text-orange-500 transition-colors">About</a>
+          <Link href="/about" className="text-gray-600 hover:text-orange-500 transition-colors">
+            About
           </Link>
-          <Link href="/docs">
-            <a className="text-gray-600 hover:text-orange-500 transition-colors">Documentation</a>
+          <Link href="/docs" className="text-gray-600 hover:text-orange-500 transition-colors">
+            Documentation
           </Link>
         </nav>
 
@@ -36,14 +36,14 @@ export default function Navbar() {
           </SheetTrigger>
           <SheetContent side="right">
             <nav className="flex flex-col space-y-4 mt-8">
-              <Link href="/">
-                <a className="text-gray-600 hover:text-orange-500 transition-colors">Home</a>
+              <Link href="/" className="text-gray-600 hover:text-orange-500 transition-colors">
+                Home
               </Link>
-              <Link href="/about">
-                <a className="text-gray-600 hover:text-orange-500 transition-colors">About</a>
+              <Link href="/about" className="text-gray-600 hover:text-orange-500 transition-colors">
+                About
               </Link>
-              <Link href="/docs">
-                <a className="text-gray-600 hover:text-orange-500 transition-colors">Documentation</a>
+              <Link href="/docs" className="text-gray-600 hover:text-orange-500 transition-colors">
+                Documentation
               </Link>
             </nav>
           </SheetContent>
