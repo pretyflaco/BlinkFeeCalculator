@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import { useMempoolData } from "@/hooks/useMempoolData";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Info, Bitcoin, Check, Loader2 } from "lucide-react";
@@ -23,6 +24,7 @@ export default function FeeCalculator() {
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('fastestFee');
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [isSatsMode, setIsSatsMode] = useState<boolean>(false);
   const { data: mempoolData, isLoading, isError, error, refetch } = useMempoolData();
   const { toast } = useToast();
 
@@ -52,6 +54,17 @@ export default function FeeCalculator() {
   const btcToSats = (btc: string): number => {
     if (!btc || btc === '') return 0;
     return Math.round(parseFloat(btc) * 100000000);
+  };
+
+  // Convert satoshis to BTC
+  const satsToBtc = (sats: number): string => {
+    return (sats / 100000000).toFixed(8);
+  };
+
+  // Get payment amount in satoshis regardless of input mode
+  const getPaymentAmountSats = (): number => {
+    if (!paymentAmount || paymentAmount === '') return 0;
+    return isSatsMode ? parseInt(paymentAmount, 10) : btcToSats(paymentAmount);
   };
 
   // Get the number of inputs based on payment amount in satoshis
@@ -127,7 +140,7 @@ export default function FeeCalculator() {
   const calculateBlinkFee = (): { feeSats: number; feeBTC: number; feeUSD: number; transactionSize: number } | null => {
     if (!mempoolData) return null;
 
-    const paymentAmountSats = btcToSats(paymentAmount);
+    const paymentAmountSats = getPaymentAmountSats();
     if (paymentAmountSats === 0) return null;
 
     const numInputs = getNumberOfInputs(paymentAmountSats);
@@ -185,7 +198,7 @@ export default function FeeCalculator() {
     refetch();
   };
 
-  // Handle input change to display in sats
+  // Handle input change
   const handlePaymentAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.value === '') {
       setPaymentAmount('');
@@ -199,9 +212,38 @@ export default function FeeCalculator() {
     }
   };
 
+  // Handle the unit toggle switch change
+  const handleUnitToggleChange = () => {
+    // If we have a value, convert it between units
+    if (paymentAmount) {
+      if (isSatsMode) {
+        // Converting from sats to BTC
+        const satsValue = parseInt(paymentAmount, 10);
+        setPaymentAmount(satsToBtc(satsValue));
+      } else {
+        // Converting from BTC to sats
+        const btcValue = parseFloat(paymentAmount);
+        setPaymentAmount(Math.round(btcValue * 100000000).toString());
+      }
+    }
+    
+    // Toggle the mode
+    setIsSatsMode(!isSatsMode);
+  };
+
+  // Get input placeholder based on current mode
+  const getInputPlaceholder = (): string => {
+    return isSatsMode ? "1000000" : "0.00123456";
+  };
+
+  // Get unit label for input field
+  const getUnitLabel = (): string => {
+    return isSatsMode ? "sats" : "BTC";
+  };
+
   // Calculate dynamic info text based on payment amount
   const getTransactionInfoText = (): string => {
-    const paymentAmountSats = btcToSats(paymentAmount);
+    const paymentAmountSats = getPaymentAmountSats();
     if (paymentAmountSats === 0) return 'Enter a payment amount to see transaction details';
     
     const numInputs = getNumberOfInputs(paymentAmountSats);
@@ -211,13 +253,29 @@ export default function FeeCalculator() {
     return `This calculation uses ${numInputs} ${numInputs === 1 ? 'input' : 'inputs'} and ${numOutputs} outputs (${transactionSize} vbytes) based on your payment amount.`;
   };
 
+  // Display equivalent amount in opposite unit
+  const getEquivalentAmount = (): string => {
+    if (!paymentAmount) return '';
+    
+    if (isSatsMode) {
+      // Show BTC equivalent
+      const satsValue = parseInt(paymentAmount, 10);
+      return `= ${satsToBtc(satsValue)} BTC`;
+    } else {
+      // Show sats equivalent
+      return `= ${btcToSats(paymentAmount).toLocaleString()} sats`;
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
       <Card className="shadow-md">
         <CardContent className="p-6 md:p-8">
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">
-              <Label htmlFor="payment-amount" className="text-sm font-medium">Payment Amount (BTC)</Label>
+              <Label htmlFor="payment-amount" className="text-sm font-medium">
+                Payment Amount ({isSatsMode ? 'sats' : 'BTC'})
+              </Label>
               <div className="text-xs text-gray-500">
                 {isLoading ? (
                   <div className="flex items-center">
@@ -237,6 +295,18 @@ export default function FeeCalculator() {
                 )}
               </div>
             </div>
+            
+            {/* Unit toggle */}
+            <div className="flex items-center justify-end space-x-2 mb-2">
+              <span className="text-xs text-gray-500">BTC</span>
+              <Switch
+                checked={isSatsMode}
+                onCheckedChange={handleUnitToggleChange}
+                aria-label="Toggle between BTC and satoshi units"
+              />
+              <span className="text-xs text-gray-500">sats</span>
+            </div>
+            
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Bitcoin className="h-5 w-5 text-orange-500" />
@@ -246,18 +316,19 @@ export default function FeeCalculator() {
                 id="payment-amount"
                 value={paymentAmount}
                 onChange={handlePaymentAmountChange}
-                placeholder="0.00123456"
+                placeholder={getInputPlaceholder()}
                 className="pl-10 pr-12"
-                step="0.00000001"
+                step={isSatsMode ? "1" : "0.00000001"}
                 min="0"
               />
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-gray-500">BTC</span>
+                <span className="text-gray-500">{getUnitLabel()}</span>
               </div>
             </div>
+            
             {paymentAmount && (
               <p className="mt-2 text-sm text-gray-500">
-                {btcToSats(paymentAmount).toLocaleString()} sats
+                {getEquivalentAmount()}
               </p>
             )}
             <p className="mt-2 text-sm text-gray-500">Enter the amount you want to send through Blink.</p>
