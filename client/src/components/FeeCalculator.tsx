@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import { useMempoolData } from "@/hooks/useMempoolData";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Info, Bitcoin, Check, Loader2 } from "lucide-react";
 
 // Constants for the fee calculation
-const TRANSACTION_SIZE = 209; // vbytes (2 PWPKH inputs and 2 PWPKH outputs)
 const BTC_USD_PRICE = 43000; // Placeholder BTC price in USD
+
+// Transaction size components for P2WPKH
+const BASE_SIZE = 11; // bytes
+const P2WPKH_INPUT_SIZE = 68; // bytes
+const P2WPKH_OUTPUT_SIZE = 31; // bytes
 
 type FeePreference = 'fastestFee' | 'halfHourFee' | 'hourFee';
 
@@ -45,26 +48,108 @@ export default function FeeCalculator() {
     setLastUpdated(`Last updated: ${formattedDate}`);
   };
 
-  // Format a number of satoshis to BTC
-  const formatSatsToBTC = (sats: number): string => {
-    const btc = sats / 100000000;
-    return btc.toFixed(8);
+  // Convert BTC to satoshis
+  const btcToSats = (btc: string): number => {
+    if (!btc || btc === '') return 0;
+    return Math.round(parseFloat(btc) * 100000000);
   };
 
-  // Calculate the transaction fee
-  const calculateFee = (): { feeSats: number; feeBTC: number; feeUSD: number } | null => {
+  // Get the number of inputs based on payment amount in satoshis
+  const getNumberOfInputs = (amountSats: number): number => {
+    if (amountSats < 1) return 0;
+    if (amountSats < 500000) return 1;
+    if (amountSats < 3000000) return 2;
+    if (amountSats < 10000000) return 3;
+    if (amountSats < 22000000) return 4;
+    if (amountSats < 70000000) return 5;
+    return 6;
+  };
+
+  // Calculate the transaction size in vbytes
+  const calculateTransactionSize = (numInputs: number): number => {
+    const numOutputs = 2; // Always 2 outputs as per requirements
+    return BASE_SIZE + (numInputs * P2WPKH_INPUT_SIZE) + (numOutputs * P2WPKH_OUTPUT_SIZE);
+  };
+
+  // Calculate exponential decay for fee percentage calculations
+  const calculateExpDecay = (
+    paymentAmountSats: number, 
+    minRate: number, 
+    maxRate: number, 
+    constDivisor: number
+  ): number => {
+    if (paymentAmountSats < 4000000) {
+      return minRate + (maxRate - minRate) * Math.exp(-((paymentAmountSats - 21000) / (4000000 - 21000)) * 21);
+    } else {
+      return constDivisor / paymentAmountSats;
+    }
+  };
+
+  // Calculate base fee multiplier
+  const calculateBaseMultiplier = (feeType: FeePreference): number => {
+    if (!mempoolData) return 0;
+    
+    switch (feeType) {
+      case 'fastestFee': // Priority
+        return (2 / mempoolData.fastestFee) + 1.3;
+      case 'halfHourFee': // Standard
+        return (1 / mempoolData.hourFee) + 1.1;
+      case 'hourFee': // Slow
+        return (2 / mempoolData.economyFee) + 1.1;
+      default:
+        return 0;
+    }
+  };
+
+  // Calculate fee percentage based on fee preference
+  const calculateFeePercentage = (paymentAmountSats: number, feeType: FeePreference): number => {
+    if (!mempoolData || paymentAmountSats === 0) return 0;
+    
+    switch (feeType) {
+      case 'fastestFee': { // Priority
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.01, 0.04, 40000);
+        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.005 - expDecay);
+      }
+      case 'halfHourFee': { // Standard
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.00625, 0.03, 25000);
+        return expDecay + ((mempoolData.hourFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
+      }
+      case 'hourFee': { // Slow
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.00375, 0.02, 15000);
+        return expDecay + ((mempoolData.economyFee - 1) / (2000 - 1)) * (0.001 - expDecay);
+      }
+      default:
+        return 0;
+    }
+  };
+
+  // Calculate the Blink fee
+  const calculateBlinkFee = (): { feeSats: number; feeBTC: number; feeUSD: number; transactionSize: number } | null => {
     if (!mempoolData) return null;
 
-    const feeRate = mempoolData[selectedFeeType];
-    const feeSats = TRANSACTION_SIZE * feeRate;
+    const paymentAmountSats = btcToSats(paymentAmount);
+    if (paymentAmountSats === 0) return null;
+
+    const numInputs = getNumberOfInputs(paymentAmountSats);
+    const transactionSize = calculateTransactionSize(numInputs);
+    const paymentCostToBank = transactionSize;
+    
+    const feePercentage = calculateFeePercentage(paymentAmountSats, selectedFeeType);
+    const baseMultiplier = calculateBaseMultiplier(selectedFeeType);
+    
+    // Calculate fee using the formula
+    const feeSats = Math.round(
+      (paymentAmountSats * feePercentage) + (paymentCostToBank * baseMultiplier)
+    );
+    
     const feeBTC = feeSats / 100000000;
     const feeUSD = feeBTC * BTC_USD_PRICE;
 
-    return { feeSats, feeBTC, feeUSD };
+    return { feeSats, feeBTC, feeUSD, transactionSize };
   };
 
   // Get fee calculation result
-  const feeCalculation = calculateFee();
+  const feeCalculation = calculateBlinkFee();
 
   // Handle fee preference button click
   const handleFeePreferenceChange = (preference: FeePreference) => {
@@ -74,9 +159,9 @@ export default function FeeCalculator() {
   // Get the display name for the fee type
   const getFeeTypeName = (feeType: FeePreference): string => {
     switch (feeType) {
-      case 'fastestFee': return 'Fastest';
-      case 'halfHourFee': return 'Half Hour';
-      case 'hourFee': return 'Hour';
+      case 'fastestFee': return 'Priority';
+      case 'halfHourFee': return 'Standard';
+      case 'hourFee': return 'Slow';
       default: return 'Custom';
     }
   };
@@ -98,6 +183,32 @@ export default function FeeCalculator() {
       description: "Fetching latest mempool data",
     });
     refetch();
+  };
+
+  // Handle input change to display in sats
+  const handlePaymentAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value === '') {
+      setPaymentAmount('');
+      return;
+    }
+    
+    // Allow valid numeric input
+    const value = e.target.value;
+    if (!isNaN(parseFloat(value)) && isFinite(Number(value))) {
+      setPaymentAmount(value);
+    }
+  };
+
+  // Calculate dynamic info text based on payment amount
+  const getTransactionInfoText = (): string => {
+    const paymentAmountSats = btcToSats(paymentAmount);
+    if (paymentAmountSats === 0) return 'Enter a payment amount to see transaction details';
+    
+    const numInputs = getNumberOfInputs(paymentAmountSats);
+    const numOutputs = 2;
+    const transactionSize = calculateTransactionSize(numInputs);
+    
+    return `This calculation uses ${numInputs} ${numInputs === 1 ? 'input' : 'inputs'} and ${numOutputs} outputs (${transactionSize} vbytes) based on your payment amount.`;
   };
 
   return (
@@ -134,7 +245,7 @@ export default function FeeCalculator() {
                 type="number"
                 id="payment-amount"
                 value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
+                onChange={handlePaymentAmountChange}
                 placeholder="0.00123456"
                 className="pl-10 pr-12"
                 step="0.00000001"
@@ -144,13 +255,18 @@ export default function FeeCalculator() {
                 <span className="text-gray-500">BTC</span>
               </div>
             </div>
+            {paymentAmount && (
+              <p className="mt-2 text-sm text-gray-500">
+                {btcToSats(paymentAmount).toLocaleString()} sats
+              </p>
+            )}
             <p className="mt-2 text-sm text-gray-500">Enter the amount you want to send through Blink.</p>
           </div>
 
           {/* Fee Results Card */}
           <div className="bg-gray-50 rounded-lg p-5 mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Fee Calculation</h3>
+              <h3 className="text-lg font-medium">Blink Fee</h3>
               {mempoolData && (
                 <Badge variant={getFeeBadgeVariant(selectedFeeType)}>
                   {getFeeTypeName(selectedFeeType)}
@@ -162,7 +278,11 @@ export default function FeeCalculator() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Transaction Size:</span>
-                <span className="font-medium">{TRANSACTION_SIZE} vbytes</span>
+                {paymentAmount && feeCalculation ? (
+                  <span className="font-medium">{feeCalculation.transactionSize} vbytes</span>
+                ) : (
+                  <span className="font-medium text-gray-400">--</span>
+                )}
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Current Fee Rate:</span>
@@ -178,7 +298,7 @@ export default function FeeCalculator() {
                 )}
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-600">Estimated Fee:</span>
+                <span className="text-gray-600">Blink Fee:</span>
                 {isLoading ? (
                   <span className="font-medium flex items-center">
                     <Loader2 className="mr-1 h-3 w-3 animate-spin text-orange-500" />
@@ -186,7 +306,7 @@ export default function FeeCalculator() {
                   </span>
                 ) : feeCalculation ? (
                   <span className="font-medium">
-                    {feeCalculation.feeSats.toLocaleString()} sats ({formatSatsToBTC(feeCalculation.feeSats)} BTC)
+                    {feeCalculation.feeSats.toLocaleString()} sats
                   </span>
                 ) : (
                   <span className="font-medium text-gray-400">--</span>
@@ -217,21 +337,21 @@ export default function FeeCalculator() {
                 onClick={() => handleFeePreferenceChange('fastestFee')}
                 className="col-span-1"
               >
-                Fastest
+                Priority
               </Button>
               <Button
                 variant={selectedFeeType === 'halfHourFee' ? 'default' : 'outline'}
                 onClick={() => handleFeePreferenceChange('halfHourFee')}
                 className="col-span-1"
               >
-                Half Hour
+                Standard
               </Button>
               <Button
                 variant={selectedFeeType === 'hourFee' ? 'default' : 'outline'}
                 onClick={() => handleFeePreferenceChange('hourFee')}
                 className="col-span-1"
               >
-                Hour
+                Slow
               </Button>
             </div>
           </div>
@@ -241,8 +361,8 @@ export default function FeeCalculator() {
             <div className="flex items-start mb-2">
               <Info className="h-4 w-4 text-blue-500 mr-2 mt-0.5" />
               <p>
-                This calculator assumes a standard transaction with 2 PWPKH inputs and 2 PWPKH outputs (209 vbyte size).
-                Fees are estimated based on current mempool conditions.
+                {getTransactionInfoText()}
+                {' '}Fees are estimated based on current mempool conditions.
               </p>
             </div>
             <div className="text-xs text-gray-500 italic mt-2">
