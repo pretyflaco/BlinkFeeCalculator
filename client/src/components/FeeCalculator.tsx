@@ -7,11 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { useMempoolData } from "@/hooks/useMempoolData";
+import { useBitcoinPrice } from "@/hooks/useBitcoinPrice";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Info, Bitcoin, Check, Loader2 } from "lucide-react";
-
-// Constants for the fee calculation
-const BTC_USD_PRICE = 43000; // Placeholder BTC price in USD
 
 // Transaction size components for P2WPKH
 const BASE_SIZE = 11; // bytes
@@ -25,8 +23,14 @@ export default function FeeCalculator() {
   const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('fastestFee');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [isSatsMode, setIsSatsMode] = useState<boolean>(false);
-  const { data: mempoolData, isLoading, isError, error, refetch } = useMempoolData();
+  const { data: mempoolData, isLoading: mempoolLoading, isError: mempoolError, error: mempoolErrorData, refetch: refetchMempool } = useMempoolData();
+  const { data: btcPrice, isLoading: priceLoading, isError: priceError, error: priceErrorData } = useBitcoinPrice();
   const { toast } = useToast();
+  
+  // Loading and error states combined for both APIs
+  const isLoading = mempoolLoading || priceLoading;
+  const isError = mempoolError || priceError;
+  const error = mempoolError ? mempoolErrorData : priceErrorData;
 
   useEffect(() => {
     if (mempoolData) {
@@ -37,11 +41,11 @@ export default function FeeCalculator() {
   // Set up periodic refresh (every 2 minutes)
   useEffect(() => {
     const interval = setInterval(() => {
-      refetch();
+      refetchMempool();
     }, 120000); // 2 minutes
 
     return () => clearInterval(interval);
-  }, [refetch]);
+  }, [refetchMempool]);
 
   // Update the last updated timestamp
   const updateLastUpdated = () => {
@@ -138,7 +142,7 @@ export default function FeeCalculator() {
 
   // Calculate the Blink fee
   const calculateBlinkFee = (): { feeSats: number; feeBTC: number; feeUSD: number; transactionSize: number } | null => {
-    if (!mempoolData) return null;
+    if (!mempoolData || !btcPrice) return null;
 
     const paymentAmountSats = getPaymentAmountSats();
     if (paymentAmountSats === 0) return null;
@@ -156,7 +160,7 @@ export default function FeeCalculator() {
     );
     
     const feeBTC = feeSats / 100000000;
-    const feeUSD = feeBTC * BTC_USD_PRICE;
+    const feeUSD = feeBTC * btcPrice; // Use real-time Bitcoin price from API
 
     return { feeSats, feeBTC, feeUSD, transactionSize };
   };
@@ -189,13 +193,13 @@ export default function FeeCalculator() {
     }
   };
 
-  // Retry loading mempool data
+  // Retry loading mempool data and price data
   const handleRetry = () => {
     toast({
       title: "Retrying...",
-      description: "Fetching latest mempool data",
+      description: "Fetching latest data",
     });
-    refetch();
+    refetchMempool();
   };
 
   // Handle input change
