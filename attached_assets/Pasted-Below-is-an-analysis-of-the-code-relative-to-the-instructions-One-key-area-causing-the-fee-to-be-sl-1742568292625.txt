@@ -1,0 +1,32 @@
+Below is an analysis of the code relative to the instructions. One key area causing the fee to be slightly off is the mapping between the fee‐preference keys and the corresponding mempool fee values.
+
+Fee Preference Key Mapping Issue
+In the instructions the tiers should be renamed as follows:
+
+• Priority → uses data from FastestFee
+• Standard → uses data from hourFee
+• Slow → uses data from economyFee
+
+However, in the code the state and switch cases are set up like this:
+
+• The fee preference state is initially set to "fastestFee" (Priority),
+• The Standard button sets the fee type to "halfHourFee", and
+• The Slow button sets the fee type to "hourFee".
+
+Then, in the fee calculation functions the mapping is as follows:
+
+• For the Priority case (fee type "fastestFee"), the code uses mempoolData.fastestFee – which is correct.
+• For the Standard case (fee type "halfHourFee"), it calculates the fee percentage using mempoolData.hourFee (and in the base multiplier it also uses mempoolData.hourFee).
+• For the Slow case (fee type "hourFee"), it uses mempoolData.economyFee.
+
+This mismatch means that the fee preference strings do not correspond to the actual fee data. In other words, the “Standard” tier (should use hourFee) is selected by setting fee type to "halfHourFee" but then the code goes to the case “halfHourFee” to look up mempoolData.hourFee—which can be confusing. Also, the “Slow” option is represented by fee type "hourFee" but then it is mapped to mempoolData.economyFee.
+
+How It Should be
+To follow the instructions and ensure consistency, the fee-preference keys should align with the underlying mempool data. For example:
+
+• Use:   – fee type "fastestFee" for Priority (using mempoolData.fastestFee)
+– fee type "hourFee" for Standard (using mempoolData.hourFee)
+– fee type "economyFee" for Slow (using mempoolData.economyFee)
+
+• And update the UI text so that “Half Hour” is renamed to “Standard” and “Hour” to “Slow” accordingly.
+• Update the switch cases in calculateFeePercentage and calculateBaseMultiplier as well as in getFeeTypeName so that they use the keys "fastestFee", "hourFee", and "economyFee". That way, when the user selects “Standard” the functions will pull from mempoolData.hourFee; when the user selects “Slow” they will pull from mempoolData.economyFee.

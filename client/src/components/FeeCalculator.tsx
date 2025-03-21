@@ -16,7 +16,7 @@ const BASE_SIZE = 11; // bytes
 const P2WPKH_INPUT_SIZE = 68; // bytes
 const P2WPKH_OUTPUT_SIZE = 31; // bytes
 
-type FeePreference = 'fastestFee' | 'halfHourFee' | 'hourFee';
+type FeePreference = 'fastestFee' | 'hourFee' | 'economyFee';
 
 export default function FeeCalculator() {
   const [paymentAmount, setPaymentAmount] = useState<string>('');
@@ -109,9 +109,9 @@ export default function FeeCalculator() {
     switch (feeType) {
       case 'fastestFee': // Priority
         return (2 / mempoolData.fastestFee) + 1.3;
-      case 'halfHourFee': // Standard
+      case 'hourFee': // Standard
         return (1 / mempoolData.hourFee) + 1.1;
-      case 'hourFee': // Slow
+      case 'economyFee': // Slow
         return (2 / mempoolData.economyFee) + 1.1;
       default:
         return 0;
@@ -127,11 +127,11 @@ export default function FeeCalculator() {
         const expDecay = calculateExpDecay(paymentAmountSats, 0.01, 0.04, 40000);
         return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.005 - expDecay);
       }
-      case 'halfHourFee': { // Standard
+      case 'hourFee': { // Standard
         const expDecay = calculateExpDecay(paymentAmountSats, 0.00625, 0.03, 25000);
         return expDecay + ((mempoolData.hourFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
       }
-      case 'hourFee': { // Slow
+      case 'economyFee': { // Slow
         const expDecay = calculateExpDecay(paymentAmountSats, 0.00375, 0.02, 15000);
         return expDecay + ((mempoolData.economyFee - 1) / (2000 - 1)) * (0.001 - expDecay);
       }
@@ -177,8 +177,8 @@ export default function FeeCalculator() {
   const getFeeTypeName = (feeType: FeePreference): string => {
     switch (feeType) {
       case 'fastestFee': return 'Priority';
-      case 'halfHourFee': return 'Standard';
-      case 'hourFee': return 'Slow';
+      case 'hourFee': return 'Standard';
+      case 'economyFee': return 'Slow';
       default: return 'Custom';
     }
   };
@@ -187,8 +187,8 @@ export default function FeeCalculator() {
   const getFeeBadgeVariant = (feeType: FeePreference): "default" | "secondary" | "destructive" => {
     switch (feeType) {
       case 'fastestFee': return "default";
-      case 'halfHourFee': return "secondary";
-      case 'hourFee': return "destructive";
+      case 'hourFee': return "secondary";
+      case 'economyFee': return "destructive";
       default: return "default";
     }
   };
@@ -415,15 +415,15 @@ export default function FeeCalculator() {
                 Priority
               </Button>
               <Button
-                variant={selectedFeeType === 'halfHourFee' ? 'default' : 'outline'}
-                onClick={() => handleFeePreferenceChange('halfHourFee')}
+                variant={selectedFeeType === 'hourFee' ? 'default' : 'outline'}
+                onClick={() => handleFeePreferenceChange('hourFee')}
                 className="col-span-1"
               >
                 Standard
               </Button>
               <Button
-                variant={selectedFeeType === 'hourFee' ? 'default' : 'outline'}
-                onClick={() => handleFeePreferenceChange('hourFee')}
+                variant={selectedFeeType === 'economyFee' ? 'default' : 'outline'}
+                onClick={() => handleFeePreferenceChange('economyFee')}
                 className="col-span-1"
               >
                 Slow
