@@ -66,6 +66,59 @@ const getFeeRateFromSliderPosition = (position: number): number => {
   }
 };
 
+// Convert payment amount to slider position (0-100)
+// Uses a logarithmic scale
+const getSliderPositionFromAmount = (amountSats: number): number => {
+  if (amountSats <= 10000) return 0; // 0.0001 BTC or 10,000 sats
+  if (amountSats >= 100000000) return 100; // 1 BTC or 100,000,000 sats
+  
+  // Use a logarithmic scale where:
+  // 0% = 10,000 sats (0.0001 BTC)
+  // 50% = 1,000,000 sats (0.01 BTC)
+  // 100% = 100,000,000 sats (1 BTC)
+  
+  if (amountSats <= 1000000) {
+    // Lower half of slider (10K to 1M sats) - logarithmic
+    const logMin = Math.log(10000);
+    const logMax = Math.log(1000000);
+    const scale = (Math.log(amountSats) - logMin) / (logMax - logMin);
+    return Math.round(scale * 50);
+  } else {
+    // Upper half of slider (1M to 100M sats) - logarithmic
+    const logMin = Math.log(1000000);
+    const logMax = Math.log(100000000);
+    const scale = (Math.log(amountSats) - logMin) / (logMax - logMin);
+    return Math.round(50 + (scale * 50));
+  }
+};
+
+// Convert slider position (0-100) to payment amount
+const getAmountFromSliderPosition = (position: number): number => {
+  if (position <= 0) return 10000; // 0.0001 BTC
+  if (position >= 100) return 100000000; // 1 BTC
+  
+  // Use a logarithmic scale where:
+  // 0% = 10,000 sats (0.0001 BTC)
+  // 50% = 1,000,000 sats (0.01 BTC)
+  // 100% = 100,000,000 sats (1 BTC)
+  
+  if (position <= 50) {
+    // Lower half of slider (0-50%) maps to 10K-1M sats - logarithmic
+    const logMin = Math.log(10000);
+    const logMax = Math.log(1000000);
+    const normalizedPosition = position / 50;
+    const amount = Math.exp(logMin + normalizedPosition * (logMax - logMin));
+    return Math.round(amount);
+  } else {
+    // Upper half of slider (50-100%) maps to 1M-100M sats - logarithmic
+    const logMin = Math.log(1000000);
+    const logMax = Math.log(100000000);
+    const normalizedPosition = (position - 50) / 50;
+    const amount = Math.exp(logMin + normalizedPosition * (logMax - logMin));
+    return Math.round(amount);
+  }
+};
+
 export default function FeeCalculator() {
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('fastestFee');
@@ -73,6 +126,7 @@ export default function FeeCalculator() {
   const [isSatsMode, setIsSatsMode] = useState<boolean>(false);
   const [isSimulationMode, setIsSimulationMode] = useState<boolean>(false);
   const [simulatedFeeRate, setSimulatedFeeRate] = useState<number>(50); // Default to 50 sat/vB
+  const [useAmountSlider, setUseAmountSlider] = useState<boolean>(false);
   const { data: mempoolData, isLoading: mempoolLoading, isError: mempoolError, error: mempoolErrorData, refetch: refetchMempool } = useMempoolData();
   const { data: btcPrice, isLoading: priceLoading, isError: priceError, error: priceErrorData } = useBitcoinPrice();
   const { toast } = useToast();
@@ -423,41 +477,95 @@ export default function FeeCalculator() {
               </div>
             </div>
 
-            {/* Unit toggle */}
-            <div className="flex items-center justify-end space-x-2 mb-2">
-              <span className="text-xs text-gray-500">BTC</span>
-              <Switch
-                checked={isSatsMode}
-                onCheckedChange={handleUnitToggleChange}
-                aria-label="Toggle between BTC and satoshi units"
-              />
-              <span className="text-xs text-gray-500">sats</span>
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Bitcoin className="h-5 w-5 text-orange-500" />
+            {/* Unit toggle and Slider toggle */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-500">Manual</span>
+                <Switch
+                  checked={useAmountSlider}
+                  onCheckedChange={() => setUseAmountSlider(!useAmountSlider)}
+                  aria-label="Toggle between manual input and slider for amount"
+                />
+                <span className="text-xs text-gray-500">Slider</span>
               </div>
-              <Input
-                type="number"
-                id="payment-amount"
-                value={paymentAmount}
-                onChange={handlePaymentAmountChange}
-                placeholder={getInputPlaceholder()}
-                className="pl-10 pr-12"
-                step={isSatsMode ? "1" : "0.00000001"}
-                min="0"
-              />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-gray-500">{getUnitLabel()}</span>
+              
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-500">BTC</span>
+                <Switch
+                  checked={isSatsMode}
+                  onCheckedChange={handleUnitToggleChange}
+                  aria-label="Toggle between BTC and satoshi units"
+                />
+                <span className="text-xs text-gray-500">sats</span>
               </div>
             </div>
 
-            {paymentAmount && (
-              <p className="mt-2 text-sm text-gray-500">
-                {getEquivalentAmount()}
-              </p>
+            {useAmountSlider ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Amount:</span>
+                  <span className="font-medium text-sm">
+                    {isSatsMode
+                      ? `${(paymentAmount ? parseInt(paymentAmount) : 0).toLocaleString()} sats`
+                      : `${(paymentAmount ? parseFloat(paymentAmount) : 0).toFixed(8)} BTC`}
+                  </span>
+                </div>
+                <Slider
+                  value={[getSliderPositionFromAmount(getPaymentAmountSats() || 10000)]}
+                  onValueChange={(value) => {
+                    const amountSats = getAmountFromSliderPosition(value[0]);
+                    if (isSatsMode) {
+                      setPaymentAmount(amountSats.toString());
+                    } else {
+                      setPaymentAmount(satsToBtc(amountSats));
+                    }
+                  }}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="mt-2"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>0.0001 BTC</span>
+                  <span>0.01 BTC</span>
+                  <span>1 BTC</span>
+                </div>
+                
+                {paymentAmount && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    {getEquivalentAmount()}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Bitcoin className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <Input
+                    type="number"
+                    id="payment-amount"
+                    value={paymentAmount}
+                    onChange={handlePaymentAmountChange}
+                    placeholder={getInputPlaceholder()}
+                    className="pl-10 pr-12"
+                    step={isSatsMode ? "1" : "0.00000001"}
+                    min="0"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500">{getUnitLabel()}</span>
+                  </div>
+                </div>
+
+                {paymentAmount && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    {getEquivalentAmount()}
+                  </p>
+                )}
+              </>
             )}
+            
             <p className="mt-2 text-sm text-gray-500">Enter the amount you want to send through Blink.</p>
           </div>
 
