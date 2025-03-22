@@ -109,9 +109,9 @@ export default function FeeCalculator() {
       case 'fastestFee': // Priority
         return (2 / mempoolData.fastestFee) + 1.3;
       case 'hourFee': // Standard
-        return (1 / mempoolData.hourFee) + 1.1;
+        return (1 / mempoolData.fastestFee) + 1.1;
       case 'economyFee': // Slow
-        return (2 / mempoolData.economyFee) + 1.1;
+        return (2 / mempoolData.fastestFee) + 1.1;
       default:
         return 0;
     }
@@ -128,11 +128,11 @@ export default function FeeCalculator() {
       }
       case 'hourFee': { // Standard
         const expDecay = calculateExpDecay(paymentAmountSats, 0.00625, 0.03, 25000);
-        return expDecay + ((mempoolData.hourFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
+        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
       }
       case 'economyFee': { // Slow
         const expDecay = calculateExpDecay(paymentAmountSats, 0.00375, 0.02, 15000);
-        return expDecay + ((mempoolData.economyFee - 1) / (2000 - 1)) * (0.001 - expDecay);
+        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.001 - expDecay);
       }
       default:
         return 0;
@@ -170,11 +170,8 @@ export default function FeeCalculator() {
     const paymentAmountSats = getPaymentAmountSats();
     if (paymentAmountSats === 0) return null;
 
-    const currentMempoolFee = selectedFeeType === 'fastestFee' 
-        ? mempoolData.fastestFee 
-        : selectedFeeType === 'hourFee' 
-            ? mempoolData.hourFee 
-            : mempoolData.economyFee;
+    // Always use fastestFee for all fee tiers
+    const currentMempoolFee = mempoolData.fastestFee;
 
     const paymentCostToBank = calculatePaymentCostToBank(paymentAmountSats, selectedFeeType, currentMempoolFee);
     const transactionSize = selectedFeeType === 'economyFee'
@@ -190,7 +187,7 @@ export default function FeeCalculator() {
     );
 
     const feeBTC = feeSats / 100000000;
-    const feeUSD = feeBTC * btcPrice; // Use real-time Bitcoin price from API
+    const feeUSD = feeBTC * (btcPrice || 0); // Use real-time Bitcoin price from API
 
     return { feeSats, feeBTC, feeUSD, transactionSize };
   };

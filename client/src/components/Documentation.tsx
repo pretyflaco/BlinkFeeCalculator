@@ -74,12 +74,12 @@ export default function Documentation() {
           
           <h3 className="text-lg font-medium">Base Multiplier Component</h3>
           <p className="text-sm leading-relaxed">
-            The base multiplier is calculated based on the current network fee rate:
+            The base multiplier is calculated using the current network fastestFee rate for all tiers:
           </p>
           <ul className="list-disc list-inside space-y-1 text-sm">
             <li>Priority: (2 ÷ fastestFee) + 1.3</li>
-            <li>Standard: (1 ÷ hourFee) + 1.1</li>
-            <li>Slow: (2 ÷ economyFee) + 1.1</li>
+            <li>Standard: (1 ÷ fastestFee) + 1.1</li>
+            <li>Slow: (2 ÷ fastestFee) + 1.1</li>
           </ul>
         </CardContent>
       </Card>
@@ -102,16 +102,16 @@ export default function Documentation() {
           
           <h3 className="text-lg font-medium">Standard</h3>
           <p className="text-sm leading-relaxed">
-            Uses the <code>hourFee</code> rate from the mempool, targeting inclusion within a few blocks.
-            This offers a balance between reasonable confirmation time and cost.
+            Uses the <code>fastestFee</code> rate from the mempool, but with modified base multiplier
+            for a medium priority calculation. This offers a balance between fee and speed.
           </p>
           
           <Separator className="my-4" />
           
           <h3 className="text-lg font-medium">Slow (Economy)</h3>
           <p className="text-sm leading-relaxed">
-            Uses the <code>economyFee</code> rate from the mempool, targeting inclusion within several blocks.
-            This is the most cost-effective option but may take longer to confirm.
+            Uses the <code>fastestFee</code> rate from the mempool, but with a modified base multiplier
+            for a lower cost calculation. This is the most cost-effective option.
           </p>
         </CardContent>
       </Card>
