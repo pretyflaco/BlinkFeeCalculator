@@ -394,7 +394,7 @@ export default function FeeCalculator() {
                     Loading...
                   </span>
                 ) : mempoolData ? (
-                  <span className="font-medium">{mempoolData[selectedFeeType]} sat/vB</span>
+                  <span className="font-medium">{mempoolData.fastestFee} sat/vB</span>
                 ) : (
                   <span className="font-medium text-gray-400">--</span>
                 )}
