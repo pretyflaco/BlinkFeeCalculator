@@ -19,13 +19,60 @@ const P2WPKH_OUTPUT_SIZE = 31; // bytes
 
 type FeePreference = 'fastestFee' | 'hourFee' | 'economyFee';
 
+// Convert fee rate to slider position (0-100)
+// Uses a logarithmic scale for better user experience
+const getSliderPositionFromFeeRate = (feeRate: number): number => {
+  if (feeRate <= 1) return 0;
+  if (feeRate >= 2000) return 100;
+  
+  // Use a logarithmic scale where:
+  // 0% = 1 sat/vB
+  // 50% = 50 sat/vB
+  // 100% = 2000 sat/vB
+  
+  if (feeRate <= 50) {
+    // Lower half of slider (1 to 50 sat/vB) - linear
+    return Math.round((feeRate - 1) / (50 - 1) * 50);
+  } else {
+    // Upper half of slider (50 to 2000 sat/vB) - logarithmic
+    const logMin = Math.log(50);
+    const logMax = Math.log(2000);
+    const scale = (Math.log(feeRate) - logMin) / (logMax - logMin);
+    return Math.round(50 + (scale * 50));
+  }
+};
+
+// Convert slider position (0-100) to fee rate
+const getFeeRateFromSliderPosition = (position: number): number => {
+  if (position <= 0) return 1;
+  if (position >= 100) return 2000;
+  
+  // Use the inverse of the logarithmic scale:
+  // 0% = 1 sat/vB
+  // 50% = 50 sat/vB
+  // 100% = 2000 sat/vB
+  
+  if (position <= 50) {
+    // Lower half of slider (0-50%) maps to 1-50 sat/vB - linear
+    const feeRate = 1 + (position / 50) * (50 - 1);
+    return Math.round(feeRate);
+  } else {
+    // Upper half of slider (50-100%) maps to 50-2000 sat/vB - logarithmic
+    const logMin = Math.log(50);
+    const logMax = Math.log(2000);
+    const normalizedPosition = (position - 50) / 50;
+    const feeRate = Math.exp(logMin + normalizedPosition * (logMax - logMin));
+    return Math.round(feeRate);
+  }
+};
+
 export default function FeeCalculator() {
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('fastestFee');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [isSatsMode, setIsSatsMode] = useState<boolean>(false);
   const [isSimulationMode, setIsSimulationMode] = useState<boolean>(false);
-  const [simulatedFeeRate, setSimulatedFeeRate] = useState<number>(10); // Default to 10 sat/vB
+  const [simulatedFeeRate, setSimulatedFeeRate] = useState<number>(50); // Default to 50 sat/vB
   const { data: mempoolData, isLoading: mempoolLoading, isError: mempoolError, error: mempoolErrorData, refetch: refetchMempool } = useMempoolData();
   const { data: btcPrice, isLoading: priceLoading, isError: priceError, error: priceErrorData } = useBitcoinPrice();
   const { toast } = useToast();
@@ -539,10 +586,10 @@ export default function FeeCalculator() {
                   <span className="font-medium text-sm">{simulatedFeeRate} sat/vB</span>
                 </div>
                 <Slider
-                  value={[simulatedFeeRate]}
-                  onValueChange={(value) => setSimulatedFeeRate(value[0])}
-                  min={1}
-                  max={2000}
+                  value={[getSliderPositionFromFeeRate(simulatedFeeRate)]}
+                  onValueChange={(value) => setSimulatedFeeRate(getFeeRateFromSliderPosition(value[0]))}
+                  min={0}
+                  max={100}
                   step={1}
                 />
                 <div className="flex justify-between text-xs text-gray-500">
