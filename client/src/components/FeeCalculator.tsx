@@ -127,6 +127,7 @@ export default function FeeCalculator() {
   const [isSimulationMode, setIsSimulationMode] = useState<boolean>(false);
   const [simulatedFeeRate, setSimulatedFeeRate] = useState<number>(50); // Default to 50 sat/vB
   const [useAmountSlider, setUseAmountSlider] = useState<boolean>(false);
+  const [showFeesInSats, setShowFeesInSats] = useState<boolean>(true); // Default to showing fees in sats
   const { data: mempoolData, isLoading: mempoolLoading, isError: mempoolError, error: mempoolErrorData, refetch: refetchMempool } = useMempoolData();
   const { data: btcPrice, isLoading: priceLoading, isError: priceError, error: priceErrorData } = useBitcoinPrice();
   const { toast } = useToast();
