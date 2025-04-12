@@ -227,15 +227,18 @@ export default function FeeCalculator() {
 
     switch (feeType) {
       case 'fastestFee': { // Priority
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.01, 0.04, 40000);
+        // 4% to 0.75%, capped at 30000 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.0075, 0.04, 30000);
         return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.005 - expDecay);
       }
       case 'hourFee': { // Standard
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.00625, 0.03, 25000);
+        // 3% to 0.5%, capped at 20000 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.005, 0.03, 20000);
         return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
       }
-      case 'economyFee': { // Slow
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.00375, 0.02, 15000);
+      case 'economyFee': { // Economy (renamed from Slow)
+        // 2% to 0.3125%, capped at 12500 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.003125, 0.02, 12500);
         return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.001 - expDecay);
       }
       default:
@@ -326,15 +329,18 @@ export default function FeeCalculator() {
 
     switch (feeType) {
       case 'fastestFee': { // Priority
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.01, 0.04, 40000);
+        // 4% to 0.75%, capped at 30000 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.0075, 0.04, 30000);
         return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.005 - expDecay);
       }
       case 'hourFee': { // Standard
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.00625, 0.03, 25000);
+        // 3% to 0.5%, capped at 20000 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.005, 0.03, 20000);
         return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.0025 - expDecay);
       }
-      case 'economyFee': { // Slow
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.00375, 0.02, 15000);
+      case 'economyFee': { // Economy (renamed from Slow)
+        // 2% to 0.3125%, capped at 12500 sats
+        const expDecay = calculateExpDecay(paymentAmountSats, 0.003125, 0.02, 12500);
         return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.001 - expDecay);
       }
       default:
@@ -355,7 +361,7 @@ export default function FeeCalculator() {
     switch (feeType) {
       case 'fastestFee': return 'Priority';
       case 'hourFee': return 'Standard';
-      case 'economyFee': return 'Slow';
+      case 'economyFee': return 'Economy';
       default: return 'Custom';
     }
   };
@@ -668,7 +674,7 @@ export default function FeeCalculator() {
                 onClick={() => handleFeePreferenceChange('economyFee')}
                 className="col-span-1"
               >
-                Slow
+                Economy
               </Button>
             </div>
           </div>
