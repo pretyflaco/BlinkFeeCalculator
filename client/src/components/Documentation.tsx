@@ -70,6 +70,13 @@ export default function Documentation() {
             <li>Adjusted based on current network congestion</li>
           </ul>
           
+          <div className="bg-gray-50 p-3 mt-2 rounded-md font-mono text-sm">
+            <div className="font-semibold text-xs text-gray-700 mb-1">Fee Tiers:</div>
+            <div>Priority: 4.0% → 0.75% (capped at 30,000 sats)</div>
+            <div>Standard: 3.0% → 0.50% (capped at 20,000 sats)</div>
+            <div>Economy: 2.0% → 0.3125% (capped at 12,500 sats)</div>
+          </div>
+          
           <Separator className="my-4" />
           
           <h3 className="text-lg font-medium">Base Multiplier Component</h3>
@@ -79,7 +86,7 @@ export default function Documentation() {
           <ul className="list-disc list-inside space-y-1 text-sm">
             <li>Priority: (2 ÷ fastestFee) + 1.3</li>
             <li>Standard: (1 ÷ fastestFee) + 1.1</li>
-            <li>Slow: (2 ÷ fastestFee) + 1.1</li>
+            <li>Economy: (2 ÷ fastestFee) + 1.1</li>
           </ul>
         </CardContent>
       </Card>
@@ -108,10 +115,54 @@ export default function Documentation() {
           
           <Separator className="my-4" />
           
-          <h3 className="text-lg font-medium">Slow (Economy)</h3>
+          <h3 className="text-lg font-medium">Economy</h3>
           <p className="text-sm leading-relaxed">
             Uses the <code>fastestFee</code> rate from the mempool, but with a modified base multiplier
             for a lower cost calculation. This is the most cost-effective option.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Display Options</CardTitle>
+          <CardDescription>
+            Customize how fees and amounts are displayed
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <h3 className="text-lg font-medium">Input Modes</h3>
+          <p className="text-sm leading-relaxed">
+            You can input payment amounts in two different formats:
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-sm">
+            <li><strong>BTC Mode:</strong> Enter amounts in decimal BTC format (e.g., 0.00123456)</li>
+            <li><strong>Satoshi Mode:</strong> Enter amounts in whole satoshis (e.g., 123456)</li>
+          </ul>
+          <p className="text-sm leading-relaxed mt-2">
+            Toggle between these modes using the BTC/sats switch in the payment input section.
+          </p>
+          
+          <Separator className="my-4" />
+          
+          <h3 className="text-lg font-medium">Fee Display</h3>
+          <p className="text-sm leading-relaxed">
+            Fees can be displayed in two formats:
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-sm">
+            <li><strong>Satoshi Display:</strong> Shows fees in whole satoshis (e.g., 1,234 sats)</li>
+            <li><strong>BTC Display:</strong> Shows fees in decimal BTC format (e.g., 0.00001234 BTC)</li>
+          </ul>
+          <p className="text-sm leading-relaxed mt-2">
+            Toggle between these display modes using the BTC/sats switch in the fee results section.
+          </p>
+          
+          <Separator className="my-4" />
+          
+          <h3 className="text-lg font-medium">Simulation Mode</h3>
+          <p className="text-sm leading-relaxed">
+            Test how fees would change under different network conditions without waiting for 
+            actual mempool changes. The slider uses a logarithmic scale from 1 sat/vB to 2000 sat/vB.
           </p>
         </CardContent>
       </Card>
