@@ -587,11 +587,25 @@ export default function FeeCalculator() {
             )}
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">Blink Fee</h3>
-              {mempoolData && (
-                <Badge variant={getFeeBadgeVariant(selectedFeeType)}>
-                  {getFeeTypeName(selectedFeeType)}
-                </Badge>
-              )}
+              <div className="flex items-center space-x-2">
+                {/* Fee display toggle */}
+                <div className="flex items-center space-x-2 mr-2 text-xs">
+                  <span className="text-gray-500">BTC</span>
+                  <Switch
+                    checked={showFeesInSats}
+                    onCheckedChange={() => setShowFeesInSats(!showFeesInSats)}
+                    aria-label="Toggle between BTC and satoshi display for fees"
+                    className="scale-75"
+                  />
+                  <span className="text-gray-500">sats</span>
+                </div>
+                
+                {mempoolData && (
+                  <Badge variant={getFeeBadgeVariant(selectedFeeType)}>
+                    {getFeeTypeName(selectedFeeType)}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {/* Results Details */}
@@ -630,7 +644,10 @@ export default function FeeCalculator() {
                   </span>
                 ) : feeCalculation ? (
                   <span className="font-medium">
-                    {feeCalculation.feeSats.toLocaleString()} sats
+                    {showFeesInSats 
+                      ? `${feeCalculation.feeSats.toLocaleString()} sats`
+                      : `${feeCalculation.feeBTC.toFixed(8)} BTC`
+                    }
                   </span>
                 ) : (
                   <span className="font-medium text-gray-400">--</span>
