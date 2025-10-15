@@ -1,8 +1,49 @@
 import { useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+
+// Convert fee rate to slider position (0-100) - logarithmic scale
+const getSliderPositionFromFeeRate = (feeRate: number): number => {
+  if (feeRate <= 1) return 0;
+  if (feeRate >= 2000) return 100;
+  
+  if (feeRate <= 50) {
+    return Math.round((feeRate - 1) / (50 - 1) * 50);
+  } else {
+    const logMin = Math.log(50);
+    const logMax = Math.log(2000);
+    const scale = (Math.log(feeRate) - logMin) / (logMax - logMin);
+    return Math.round(50 + (scale * 50));
+  }
+};
+
+// Convert slider position (0-100) to fee rate - logarithmic scale
+const getFeeRateFromSliderPosition = (position: number): number => {
+  if (position <= 0) return 1;
+  if (position >= 100) return 2000;
+  
+  if (position <= 50) {
+    const feeRate = 1 + (position / 50) * (50 - 1);
+    return Math.round(feeRate);
+  } else {
+    const logMin = Math.log(50);
+    const logMax = Math.log(2000);
+    const normalizedPosition = (position - 50) / 50;
+    const feeRate = Math.exp(logMin + normalizedPosition * (logMax - logMin));
+    return Math.round(feeRate);
+  }
+};
+
+// Get network condition description based on fee rate
+const getNetworkCondition = (feeRate: number): { emoji: string; label: string; color: string } => {
+  if (feeRate <= 2) return { emoji: '🟢', label: 'Calm', color: 'text-green-600' };
+  if (feeRate <= 10) return { emoji: '🟡', label: 'Low', color: 'text-yellow-600' };
+  if (feeRate <= 50) return { emoji: '🟠', label: 'Moderate', color: 'text-orange-500' };
+  if (feeRate <= 200) return { emoji: '🔴', label: 'High', color: 'text-red-500' };
+  return { emoji: '🔴', label: 'Extreme', color: 'text-red-700' };
+};
 
 const calculateExpDecay = (
   paymentAmountSats: number,
@@ -63,9 +104,10 @@ const generateChartData = (networkFee: number) => {
 };
 
 export default function FeeComparisonChart() {
-  const [isCongestedNetwork, setIsCongestedNetwork] = useState(false);
-  const networkFee = isCongestedNetwork ? 2000 : 1;
+  const [sliderPosition, setSliderPosition] = useState(0); // Default to 1 sat/vB (calm)
+  const networkFee = getFeeRateFromSliderPosition(sliderPosition);
   const chartData = generateChartData(networkFee);
+  const networkCondition = getNetworkCondition(networkFee);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -82,7 +124,7 @@ export default function FeeComparisonChart() {
             </p>
           ))}
           <p className="text-xs text-gray-500 mt-1">
-            Network: {isCongestedNetwork ? 'Congested (2000 sat/vB)' : 'Calm (1 sat/vB)'}
+            Network: {networkCondition.label} ({networkFee} sat/vB)
           </p>
         </div>
       );
@@ -99,19 +141,29 @@ export default function FeeComparisonChart() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center space-x-3 mb-6">
-          <Label htmlFor="network-toggle" className="text-sm font-medium">
-            Network Condition:
-          </Label>
-          <span className="text-sm text-gray-600">
-            {isCongestedNetwork ? '🔴 Congested (2000 sat/vB)' : '🟢 Calm (1 sat/vB)'}
-          </span>
-          <Switch
-            id="network-toggle"
-            checked={isCongestedNetwork}
-            onCheckedChange={setIsCongestedNetwork}
-            data-testid="toggle-network-condition"
+        <div className="mb-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="network-slider" className="text-sm font-medium">
+              Network Condition:
+            </Label>
+            <span className={`text-sm font-medium ${networkCondition.color}`}>
+              {networkCondition.emoji} {networkCondition.label} ({networkFee} sat/vB)
+            </span>
+          </div>
+          <Slider
+            id="network-slider"
+            value={[sliderPosition]}
+            onValueChange={(value) => setSliderPosition(value[0])}
+            min={0}
+            max={100}
+            step={1}
+            className="w-full"
+            data-testid="slider-network-condition"
           />
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>1 sat/vB (Calm)</span>
+            <span>2000 sat/vB (Extreme)</span>
+          </div>
         </div>
 
         <ResponsiveContainer width="100%" height={400}>
