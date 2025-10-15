@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import FeeComparisonChart from "./FeeComparisonChart";
+import BaseMultiplierChart from "./BaseMultiplierChart";
 
 export default function Documentation() {
   return (
@@ -30,6 +31,8 @@ export default function Documentation() {
       </Card>
 
       <FeeComparisonChart />
+
+      <BaseMultiplierChart />
 
       <Card className="mb-6">
         <CardHeader>
