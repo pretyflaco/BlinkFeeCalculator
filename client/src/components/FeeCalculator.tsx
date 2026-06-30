@@ -11,13 +11,17 @@ import { useMempoolData } from "@/hooks/useMempoolData";
 import { useBitcoinPrice } from "@/hooks/useBitcoinPrice";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Info, Bitcoin, Check, Loader2, Sliders } from "lucide-react";
-
-// Transaction size components for P2WPKH
-const BASE_SIZE = 11; // bytes
-const P2WPKH_INPUT_SIZE = 68; // bytes
-const P2WPKH_OUTPUT_SIZE = 31; // bytes
-
-type FeePreference = 'fastestFee' | 'hourFee' | 'economyFee';
+import {
+  type FeePreference,
+  type FeeModelConfig,
+  FEE_MODELS,
+  RECOMMENDED_MODEL,
+  getNumberOfInputs,
+  getBatchInputCount,
+  calculateTransactionSize,
+  calculateBlinkFee,
+  calculateFlatFee,
+} from "@/lib/feeModels";
 
 // Convert fee rate to slider position (0-100)
 // Uses a logarithmic scale for better user experience
@@ -121,7 +125,8 @@ const getAmountFromSliderPosition = (position: number): number => {
 
 export default function FeeCalculator() {
   const [paymentAmount, setPaymentAmount] = useState<string>('');
-  const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('fastestFee');
+  const [selectedFeeType, setSelectedFeeType] = useState<FeePreference>('hourFee');
+  const [selectedModelId, setSelectedModelId] = useState<FeeModelConfig['id']>(RECOMMENDED_MODEL.id);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [isSatsMode, setIsSatsMode] = useState<boolean>(false);
   const [isSimulationMode, setIsSimulationMode] = useState<boolean>(false);
@@ -176,181 +181,43 @@ export default function FeeCalculator() {
     return isSatsMode ? parseInt(paymentAmount, 10) : btcToSats(paymentAmount);
   };
 
-  // Get the number of inputs based on payment amount in satoshis
-  const getNumberOfInputs = (amountSats: number): number => {
-    if (amountSats < 1) return 0;
-    if (amountSats < 500000) return 1;
-    if (amountSats < 3000000) return 2;
-    if (amountSats < 10000000) return 3;
-    if (amountSats < 22000000) return 4;
-    if (amountSats < 70000000) return 5;
-    return 6;
-  };
+  // Active fee model configuration (Current vs Recommended)
+  const selectedModel = FEE_MODELS[selectedModelId];
 
-  // Calculate the transaction size in vbytes
-  const calculateTransactionSize = (numInputs: number, numOutputs: number = 2): number => {
-    return BASE_SIZE + (numInputs * P2WPKH_INPUT_SIZE) + (numOutputs * P2WPKH_OUTPUT_SIZE);
-  };
+  // The network fee rate that drives the calculation (live or simulated)
+  const effectiveNetworkFee = isSimulationMode
+    ? simulatedFeeRate
+    : (mempoolData?.fastestFee ?? 0);
 
-  // Calculate exponential decay for fee percentage calculations
-  const calculateExpDecay = (
-    paymentAmountSats: number, 
-    minRate: number, 
-    maxRate: number, 
-    constDivisor: number
-  ): number => {
-    if (paymentAmountSats < 4000000) {
-      return minRate + (maxRate - minRate) * Math.exp(-((paymentAmountSats - 21000) / (4000000 - 21000)) * 21);
-    } else {
-      return constDivisor / paymentAmountSats;
-    }
-  };
-
-  // Calculate base fee multiplier
-  const calculateBaseMultiplier = (feeType: FeePreference): number => {
-    if (!mempoolData) return 0;
-
-    switch (feeType) {
-      case 'fastestFee': // Priority
-        return (2 / mempoolData.fastestFee) + 1.3;
-      case 'hourFee': // Standard
-        return (1 / mempoolData.fastestFee) + 1.1;
-      case 'economyFee': // Slow
-        return (2 / mempoolData.fastestFee) + 1.1;
-      default:
-        return 0;
-    }
-  };
-
-  // Calculate fee percentage based on fee preference
-  const calculateFeePercentage = (paymentAmountSats: number, feeType: FeePreference): number => {
-    if (!mempoolData || paymentAmountSats === 0) return 0;
-
-    switch (feeType) {
-      case 'fastestFee': { // Priority
-        // 4% to 0.75%, capped at 30000 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.0075, 0.04, 30000);
-        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.005 - expDecay);
-      }
-      case 'hourFee': { // Standard
-        // 3% to 0.5%, capped at 20000 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.005, 0.03, 20000);
-        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
-      }
-      case 'economyFee': { // Economy (renamed from Slow)
-        // 2% to 0.3125%, capped at 12500 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.003125, 0.02, 12500);
-        return expDecay + ((mempoolData.fastestFee - 1) / (2000 - 1)) * (0.001 - expDecay);
-      }
-      default:
-        return 0;
-    }
-  };
-
-  const getBatchInputCount = (paymentAmountSats: number): number => {
-    if (paymentAmountSats < 500000) return 3;
-    if (paymentAmountSats < 3000000) return 4;
-    if (paymentAmountSats < 10000000) return 5;
-    if (paymentAmountSats < 22000000) return 6;
-    if (paymentAmountSats < 70000000) return 7;
-    return 8;
-  };
-
-  const calculatePaymentCostToBank = (paymentAmountSats: number, feeType: FeePreference, mempoolFee: number): number => {
-    if (feeType === 'economyFee') {
-        // Batched transaction calculation for Slow tier
-        const batchInputs = getBatchInputCount(paymentAmountSats);
-        const batchOutputs = 11;
-        const batchSize = calculateTransactionSize(batchInputs, batchOutputs);
-        return Math.round((batchSize * mempoolFee) / 10); // Divide by 10 for individual payment cost
-    }
-
-    // Regular transaction calculation for Priority and Standard
-    const numInputs = getNumberOfInputs(paymentAmountSats);
-    const transactionSize = calculateTransactionSize(numInputs);
-    return transactionSize * mempoolFee;
-  };
-
-  // Calculate the Blink fee
-  const calculateBlinkFee = (): { feeSats: number; feeBTC: number; feeUSD: number; transactionSize: number } | null => {
+  // Get fee calculation result (with BTC/USD enrichment + savings vs flat)
+  const feeCalculation = (() => {
     if (!mempoolData) return null;
-
     const paymentAmountSats = getPaymentAmountSats();
     if (paymentAmountSats === 0) return null;
 
-    // Use simulated fee rate if in simulation mode, otherwise use fastestFee
-    const currentMempoolFee = isSimulationMode ? simulatedFeeRate : mempoolData.fastestFee;
-
-    const paymentCostToBank = calculatePaymentCostToBank(paymentAmountSats, selectedFeeType, currentMempoolFee);
-    const transactionSize = selectedFeeType === 'economyFee'
-        ? calculateTransactionSize(getBatchInputCount(paymentAmountSats), 11)
-        : calculateTransactionSize(getNumberOfInputs(paymentAmountSats));
-
-    // Create a simulated mempool data object for fee percentage calculations
-    const effectiveMempoolData = isSimulationMode 
-      ? { ...mempoolData, fastestFee: simulatedFeeRate }
-      : mempoolData;
-    
-    // For simulation mode, we need special handling for base multiplier and fee percentage
-    const feePercentage = isSimulationMode 
-      ? calculateSimulatedFeePercentage(paymentAmountSats, selectedFeeType)
-      : calculateFeePercentage(paymentAmountSats, selectedFeeType);
-      
-    const baseMultiplier = isSimulationMode 
-      ? calculateSimulatedBaseMultiplier(selectedFeeType) 
-      : calculateBaseMultiplier(selectedFeeType);
-
-    // Calculate fee using the formula
-    const feeSats = Math.round(
-      (paymentAmountSats * feePercentage) + (paymentCostToBank * baseMultiplier)
+    const result = calculateBlinkFee(
+      paymentAmountSats,
+      selectedFeeType,
+      effectiveNetworkFee,
+      selectedModel,
     );
+    if (!result) return null;
 
-    const feeBTC = feeSats / 100000000;
+    const feeBTC = result.feeSats / 100000000;
     const feeUSD = feeBTC * (btcPrice || 0); // Use real-time Bitcoin price from API
+    const flatFee = calculateFlatFee(paymentAmountSats);
+    const savingsVsFlat = flatFee - result.feeSats; // positive => user saves
 
-    return { feeSats, feeBTC, feeUSD, transactionSize };
-  };
-  
-  // Simulated versions of fee calculation functions
-  const calculateSimulatedBaseMultiplier = (feeType: FeePreference): number => {
-    switch (feeType) {
-      case 'fastestFee': // Priority
-        return (2 / simulatedFeeRate) + 1.3;
-      case 'hourFee': // Standard
-        return (1 / simulatedFeeRate) + 1.1;
-      case 'economyFee': // Slow
-        return (2 / simulatedFeeRate) + 1.1;
-      default:
-        return 0;
-    }
-  };
-  
-  const calculateSimulatedFeePercentage = (paymentAmountSats: number, feeType: FeePreference): number => {
-    if (paymentAmountSats === 0) return 0;
-
-    switch (feeType) {
-      case 'fastestFee': { // Priority
-        // 4% to 0.75%, capped at 30000 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.0075, 0.04, 30000);
-        return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.005 - expDecay);
-      }
-      case 'hourFee': { // Standard
-        // 3% to 0.5%, capped at 20000 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.005, 0.03, 20000);
-        return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.0025 - expDecay);
-      }
-      case 'economyFee': { // Economy (renamed from Slow)
-        // 2% to 0.3125%, capped at 12500 sats
-        const expDecay = calculateExpDecay(paymentAmountSats, 0.003125, 0.02, 12500);
-        return expDecay + ((simulatedFeeRate - 1) / (2000 - 1)) * (0.001 - expDecay);
-      }
-      default:
-        return 0;
-    }
-  };
-
-  // Get fee calculation result
-  const feeCalculation = calculateBlinkFee();
+    return {
+      feeSats: result.feeSats,
+      feePercentage: result.feePercentage,
+      transactionSize: result.transactionSize,
+      feeBTC,
+      feeUSD,
+      flatFee,
+      savingsVsFlat,
+    };
+  })();
 
   // Handle fee preference button click
   const handleFeePreferenceChange = (preference: FeePreference) => {
@@ -459,6 +326,25 @@ export default function FeeCalculator() {
     <div className="max-w-2xl mx-auto">
       <Card className="shadow-md">
         <CardContent className="p-6 md:p-8">
+          {/* Fee Model Toggle */}
+          <div className="mb-6">
+            <Label className="block text-sm font-medium mb-2">Fee Model</Label>
+            <div className="grid grid-cols-2 gap-3">
+              {(Object.values(FEE_MODELS)).map((model) => (
+                <Button
+                  key={model.id}
+                  variant={selectedModelId === model.id ? 'default' : 'outline'}
+                  onClick={() => setSelectedModelId(model.id)}
+                  className="col-span-1"
+                  title={model.description}
+                >
+                  {model.label}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">{selectedModel.description}</p>
+          </div>
+
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">
               <Label htmlFor="payment-amount" className="text-sm font-medium">
@@ -654,6 +540,19 @@ export default function FeeCalculator() {
                 )}
               </div>
               <div className="flex justify-between items-center">
+                <span className="text-gray-600">Effective Rate:</span>
+                {isLoading ? (
+                  <span className="font-medium flex items-center">
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin text-orange-500" />
+                    Loading...
+                  </span>
+                ) : feeCalculation ? (
+                  <span className="font-medium">{(feeCalculation.feePercentage * 100).toFixed(3)}%</span>
+                ) : (
+                  <span className="font-medium text-gray-400">--</span>
+                )}
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-gray-600">Fee in USD:</span>
                 {isLoading ? (
                   <span className="font-medium flex items-center">
@@ -666,6 +565,22 @@ export default function FeeCalculator() {
                   <span className="font-medium text-gray-400">--</span>
                 )}
               </div>
+              {feeCalculation && (
+                <div className="flex justify-between items-center border-t border-gray-200 pt-3">
+                  <span className="text-gray-600">vs current flat fee:</span>
+                  {feeCalculation.savingsVsFlat > 0 ? (
+                    <span className="font-medium text-green-600">
+                      You save {feeCalculation.savingsVsFlat.toLocaleString()} sats
+                    </span>
+                  ) : feeCalculation.savingsVsFlat < 0 ? (
+                    <span className="font-medium text-gray-700">
+                      +{Math.abs(feeCalculation.savingsVsFlat).toLocaleString()} sats
+                    </span>
+                  ) : (
+                    <span className="font-medium text-gray-500">No change</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -683,9 +598,10 @@ export default function FeeCalculator() {
               <Button
                 variant={selectedFeeType === 'hourFee' ? 'default' : 'outline'}
                 onClick={() => handleFeePreferenceChange('hourFee')}
-                className="col-span-1"
+                className="col-span-1 flex flex-col h-auto py-2"
               >
-                Standard
+                <span>Standard</span>
+                <span className="text-[10px] font-normal opacity-80">Most popular</span>
               </Button>
               <Button
                 variant={selectedFeeType === 'economyFee' ? 'default' : 'outline'}

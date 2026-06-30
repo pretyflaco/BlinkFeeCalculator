@@ -8,7 +8,13 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// When building for GitHub Pages the site is served from a project subpath
+// (https://<user>.github.io/<repo>/). Set GITHUB_PAGES_BASE in CI to that path.
+// Locally and on other hosts it defaults to "/".
+const base = process.env.GITHUB_PAGES_BASE ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
     runtimeErrorOverlay(),

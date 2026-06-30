@@ -3,6 +3,20 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  type FeeModelConfig,
+  type FeePreference,
+  FEE_MODELS,
+  RECOMMENDED_MODEL,
+  calculateFeePercentage,
+} from "@/lib/feeModels";
+
+const TIER_TO_PREF: Record<'priority' | 'standard' | 'economy', FeePreference> = {
+  priority: 'fastestFee',
+  standard: 'hourFee',
+  economy: 'economyFee',
+};
 
 // Convert fee rate to slider position (0-100) - logarithmic scale
 const getSliderPositionFromFeeRate = (feeRate: number): number => {
@@ -45,68 +59,35 @@ const getNetworkCondition = (feeRate: number): { emoji: string; label: string; c
   return { emoji: '🔴', label: 'Extreme', color: 'text-red-700' };
 };
 
-const calculateExpDecay = (
-  paymentAmountSats: number,
-  minRate: number,
-  maxRate: number,
-  constDivisor: number
-): number => {
-  if (paymentAmountSats < 4000000) {
-    return minRate + (maxRate - minRate) * Math.exp(-((paymentAmountSats - 21000) / (4000000 - 21000)) * 21);
-  } else {
-    return constDivisor / paymentAmountSats;
-  }
-};
-
-const calculateFeePercentage = (
-  paymentAmountSats: number,
-  tier: 'priority' | 'standard' | 'economy',
-  networkFee: number
-): number => {
-  let expDecay: number;
-  
-  switch (tier) {
-    case 'priority':
-      expDecay = calculateExpDecay(paymentAmountSats, 0.0075, 0.04, 30000);
-      return expDecay + ((networkFee - 1) / (2000 - 1)) * (0.005 - expDecay);
-    case 'standard':
-      expDecay = calculateExpDecay(paymentAmountSats, 0.005, 0.03, 20000);
-      return expDecay + ((networkFee - 1) / (2000 - 1)) * (0.0025 - expDecay);
-    case 'economy':
-      expDecay = calculateExpDecay(paymentAmountSats, 0.003125, 0.02, 12500);
-      return expDecay + ((networkFee - 1) / (2000 - 1)) * (0.001 - expDecay);
-    default:
-      return 0;
-  }
-};
-
-const generateChartData = (networkFee: number) => {
+const generateChartData = (networkFee: number, model: FeeModelConfig) => {
   const data = [];
-  
+
   const amounts = [
     10000, 20000, 50000, 100000, 200000, 500000,
     1000000, 2000000, 3000000, 4000000, 5000000,
     10000000, 20000000, 50000000, 100000000
   ];
-  
+
   for (const amount of amounts) {
     data.push({
       amount,
       amountBTC: amount / 100000000,
       amountLabel: amount >= 1000000 ? `${(amount / 1000000).toFixed(1)}M` : `${(amount / 1000).toFixed(0)}K`,
-      priority: calculateFeePercentage(amount, 'priority', networkFee) * 100,
-      standard: calculateFeePercentage(amount, 'standard', networkFee) * 100,
-      economy: calculateFeePercentage(amount, 'economy', networkFee) * 100,
+      priority: calculateFeePercentage(amount, TIER_TO_PREF.priority, networkFee, model) * 100,
+      standard: calculateFeePercentage(amount, TIER_TO_PREF.standard, networkFee, model) * 100,
+      economy: calculateFeePercentage(amount, TIER_TO_PREF.economy, networkFee, model) * 100,
     });
   }
-  
+
   return data;
 };
 
 export default function FeeComparisonChart() {
   const [sliderPosition, setSliderPosition] = useState(0); // Default to 1 sat/vB (calm)
+  const [selectedModelId, setSelectedModelId] = useState<FeeModelConfig['id']>(RECOMMENDED_MODEL.id);
+  const model = FEE_MODELS[selectedModelId];
   const networkFee = getFeeRateFromSliderPosition(sliderPosition);
-  const chartData = generateChartData(networkFee);
+  const chartData = generateChartData(networkFee, model);
   const networkCondition = getNetworkCondition(networkFee);
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -120,7 +101,7 @@ export default function FeeComparisonChart() {
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-xs" style={{ color: entry.color }}>
               {entry.name}: {entry.value.toFixed(3)}%
-              {data.amount >= 4000000 && ` (${entry.name === 'Priority' ? '30K' : entry.name === 'Standard' ? '20K' : '12.5K'} cap)`}
+              {data.amount >= model.decayStartAmount && ' (cap)'}
             </p>
           ))}
           <p className="text-xs text-gray-500 mt-1">
@@ -141,6 +122,23 @@ export default function FeeComparisonChart() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="mb-6">
+          <Label className="block text-sm font-medium mb-2">Fee Model</Label>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.values(FEE_MODELS).map((m) => (
+              <Button
+                key={m.id}
+                variant={selectedModelId === m.id ? 'default' : 'outline'}
+                onClick={() => setSelectedModelId(m.id)}
+                size="sm"
+                title={m.description}
+              >
+                {m.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-6 space-y-3">
           <div className="flex items-center justify-between">
             <Label htmlFor="network-slider" className="text-sm font-medium">
@@ -180,7 +178,7 @@ export default function FeeComparisonChart() {
             <YAxis
               label={{ value: 'Fee Percentage (%)', angle: -90, position: 'insideLeft' }}
               tick={{ fontSize: 12 }}
-              domain={[0, 4.5]}
+              domain={[0, Math.max(...Object.values(model.tiers).map((t) => t.maxRate)) * 100 * 1.1]}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend 
@@ -226,11 +224,14 @@ export default function FeeComparisonChart() {
             </li>
             <li className="flex items-start">
               <span className="mr-2">•</span>
-              <span>At 4M sats, the fee model switches to a capped formula to ensure fees never exceed the tier's maximum (30K, 20K, or 12.5K sats)</span>
+              <span>
+                Above {(model.decayStartAmount / 1000000).toLocaleString()}M sats the model switches to a linear-tail formula. In the
+                Recommended model this threshold is set to 100M sats, so real transactions stay on the smooth curve (no visible cap).
+              </span>
             </li>
             <li className="flex items-start">
               <span className="mr-2">•</span>
-              <span>Network congestion can reduce fee percentages by up to 0.5%, 0.25%, and 0.1% for Priority, Standard, and Economy tiers respectively</span>
+              <span>As network congestion rises, each tier's effective rate blends toward its configured congestion target</span>
             </li>
             <li className="flex items-start">
               <span className="mr-2">•</span>

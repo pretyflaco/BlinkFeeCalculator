@@ -3,6 +3,20 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import {
+  type FeeModelConfig,
+  type FeePreference,
+  FEE_MODELS,
+  RECOMMENDED_MODEL,
+  calculateBaseMultiplier,
+} from "@/lib/feeModels";
+
+const TIER_TO_PREF: Record<'priority' | 'standard' | 'economy', FeePreference> = {
+  priority: 'fastestFee',
+  standard: 'hourFee',
+  economy: 'economyFee',
+};
 
 // Convert fee rate to slider position (0-100) - logarithmic scale
 const getSliderPositionFromFeeRate = (feeRate: number): number => {
@@ -45,56 +59,41 @@ const getNetworkCondition = (feeRate: number): { emoji: string; label: string; c
   return { emoji: '🔴', label: 'Extreme', color: 'text-red-700' };
 };
 
-// Calculate base multipliers for each tier
-const calculateBaseMultiplier = (
-  networkFee: number,
-  tier: 'priority' | 'standard' | 'economy'
-): number => {
-  switch (tier) {
-    case 'priority':
-      return (2 / networkFee) + 1.3;
-    case 'standard':
-      return (1 / networkFee) + 1.1;
-    case 'economy':
-      return (2 / networkFee) + 1.1;
-    default:
-      return 0;
-  }
-};
-
-const generateChartData = () => {
+const generateChartData = (model: FeeModelConfig) => {
   const data = [];
-  
+
   // Generate data points across the fee rate range
   const feeRates = [
     1, 2, 3, 5, 10, 20, 30, 50, 75, 100,
     150, 200, 300, 500, 750, 1000, 1500, 2000
   ];
-  
+
   for (const feeRate of feeRates) {
     data.push({
       feeRate,
       feeRateLabel: feeRate >= 1000 ? `${(feeRate / 1000).toFixed(1)}K` : feeRate.toString(),
-      priority: calculateBaseMultiplier(feeRate, 'priority'),
-      standard: calculateBaseMultiplier(feeRate, 'standard'),
-      economy: calculateBaseMultiplier(feeRate, 'economy'),
+      priority: calculateBaseMultiplier(TIER_TO_PREF.priority, feeRate, model),
+      standard: calculateBaseMultiplier(TIER_TO_PREF.standard, feeRate, model),
+      economy: calculateBaseMultiplier(TIER_TO_PREF.economy, feeRate, model),
     });
   }
-  
+
   return data;
 };
 
 export default function BaseMultiplierChart() {
   const [sliderPosition, setSliderPosition] = useState(0); // Default to 1 sat/vB (calm)
+  const [selectedModelId, setSelectedModelId] = useState<FeeModelConfig['id']>(RECOMMENDED_MODEL.id);
+  const model = FEE_MODELS[selectedModelId];
   const networkFee = getFeeRateFromSliderPosition(sliderPosition);
-  const chartData = generateChartData();
+  const chartData = generateChartData(model);
   const networkCondition = getNetworkCondition(networkFee);
-  
+
   // Calculate current multipliers for the selected network fee
   const currentMultipliers = {
-    priority: calculateBaseMultiplier(networkFee, 'priority'),
-    standard: calculateBaseMultiplier(networkFee, 'standard'),
-    economy: calculateBaseMultiplier(networkFee, 'economy'),
+    priority: calculateBaseMultiplier(TIER_TO_PREF.priority, networkFee, model),
+    standard: calculateBaseMultiplier(TIER_TO_PREF.standard, networkFee, model),
+    economy: calculateBaseMultiplier(TIER_TO_PREF.economy, networkFee, model),
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -125,6 +124,26 @@ export default function BaseMultiplierChart() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="mb-6">
+          <Label className="block text-sm font-medium mb-2">Fee Model</Label>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.values(FEE_MODELS).map((m) => (
+              <Button
+                key={m.id}
+                variant={selectedModelId === m.id ? 'default' : 'outline'}
+                onClick={() => setSelectedModelId(m.id)}
+                size="sm"
+                title={m.description}
+              >
+                {m.label}
+              </Button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Base-multiplier parameters are identical across both models; this toggle is provided for consistency.
+          </p>
+        </div>
+
         <div className="mb-6 space-y-3">
           <div className="flex items-center justify-between">
             <Label htmlFor="multiplier-network-slider" className="text-sm font-medium">
